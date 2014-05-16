@@ -1,0 +1,4 @@
+required addons:
+
+	ofxSSAO
+	ofxSPK

@@ -1,0 +1,145 @@
+#include "testApp.h"
+#include "ofxSPK.h"
+
+
+float _weight,
+    _radius,
+    _maxThreshold,
+    _minThreshold,
+    _exponent,
+    _numSamples;
+
+ofxSPK::System sys;
+ofxSPK::Group group;
+ofImage sprite;
+ofxSPK::Modifier rot;
+
+
+//--------------------------------------------------------------
+void testApp::setup(){
+   mat.setAmbientColor(ofColor(255,255,254));
+   mat.setDiffuseColor(ofColor(255,255,255));
+   mat.setSpecularColor(ofColor(255,255,255));
+   mat.setEmissiveColor(ofColor(255,255,255));
+   mat.setColors(ofColor(255),ofColor(255),ofColor(255),ofColor(255));
+   ssao.setup(ofGetScreenWidth(),ofGetScreenHeight());
+   light.enable();
+   soundStream.listDevices();
+   int bufferSize = 256;
+   left.assign(bufferSize, 0.0);
+   right.assign(bufferSize, 0.0);
+   volHistory.assign(400, 0.0);
+   bufferCounter   = 0;
+   drawCounter     = 0;
+   smoothedVol     = 0.0;
+   scaledVol       = 0.0;
+   soundStream.setup(this, 0, 2, 44100, bufferSize, 4);
+   ofSetVerticalSync(true);
+   glEnable(GL_DEPTH_TEST);
+   ofDisableArbTex();
+   sprite.loadImage("image.jpg");
+   ofEnableArbTex();
+   sys.setup();
+   group.setup(sys);
+   group.setColor(ofxSPK::RangeC(ofColor(255, 255), ofColor(255, 255)),
+                       ofxSPK::RangeC(ofColor(0, 0), ofColor(255, 0)));
+   group.setLifeTime(0.5, 5);
+   group.setFriction(0.1);
+   group.setSize(0, ofxSPK::RangeF(30, 250));
+   group.setGravity(ofVec3f(0, -10, 0));
+   group.setMass(0.1, 1);
+   rot.setup(SPK::Vortex::create(SPK::Vector3D(ofGetWidth()/2, ofGetHeight()/2),
+                                                                  SPK::Vector3D(0, 1, 0),
+                                                                  200,
+                                                                  10), group);
+   group.reserve(10000);
+}
+
+void testApp::audioIn(float * input, int bufferSize, int nChannels){
+        float curVol = 0.0;
+        int numCounted = 0;
+        for (int i = 0; i < bufferSize; i++){
+                left[i]         = input[i*2]*0.5;
+                right[i]        = input[i*2+1]*0.5;
+                curVol += left[i] * left[i];
+                curVol += right[i] * right[i];
+                numCounted+=2;
+        }
+        curVol /= (float)numCounted;
+        curVol = sqrt( curVol );
+        smoothedVol *= 0.93;
+        smoothedVol += 0.07 * curVol;
+        bufferCounter++;
+        //ssao.setMaxThreshold(80);
+}
+
+//--------------------------------------------------------------
+void testApp::update(){
+   ofSetWindowTitle( ofToString(ofGetFrameRate() ) );
+   scaledVol = ofMap(smoothedVol, 0.0, 0.17, 0.0, 1.0, true);
+        volHistory.push_back( scaledVol );
+        if( volHistory.size() >= 400 ){
+                volHistory.erase(volHistory.begin(), volHistory.begin()+1);
+        }
+   ball.update(scaledVol * 200.0f);
+// group.emitRandom(10, ofVec3f(ofGetMouseX(), ofGetMouseY()));
+   group.emitRandom(10, ofVec3f( ofRandomHeight(), ofRandom((ofGetHeight()/2)-50*scaledVol*20,(ofGetHeight()/2)+100), ofRandom(200,200)  ));
+   group.setSize(0,ofxSPK::RangeF(60*scaledVol*20, 80+scaledVol*20));
+   sys.update();
+}
+
+//--------------------------------------------------------------
+void testApp::draw(){
+ofBackground(0);
+   ssao.begin( cam.getNearClip(), cam.getFarClip() );
+
+   glEnable(GL_DEPTH_TEST);
+   glBlendFunc(GL_ONE, GL_ZERO);
+
+   cam.begin();
+   
+   mat.begin();
+   ball.draw(scaledVol * 50 );
+   mat.end();
+   cam.end();
+
+   ssao.end();
+   ofSetColor(78,170,205);
+   ssao.draw();
+   glDisable(GL_DEPTH_TEST);
+ 
+
+   ofEnableBlendMode(OF_BLENDMODE_ADD);
+    sys.debugDraw();
+   sprite.bind();
+        ofEnablePointSprites();
+        sys.draw();
+        ofDisablePointSprites();
+   sprite.unbind();
+}
+
+bool rayref;
+void testApp::keyPressed(int key){
+   if(key == 'f')
+      ofToggleFullscreen();
+   if(key == 's')
+      ofSaveFrame();
+   if(key == 'h'){
+      rayref=!rayref;
+      ssao.setRayReflection(rayref);
+      }
+   if(key == 'w'){
+      _radius+=1;
+      ssao.setRadius(_radius);
+   }
+   if(key == 'e'){
+      _maxThreshold+=1;
+      cout<<_maxThreshold<<endl;
+      ssao.setMaxThreshold(_maxThreshold);
+   }
+   if(key == 't'){
+      _exponent+=1;
+      cout<<_exponent<<endl;
+      ssao.setExponent(_exponent);
+   }
+}
